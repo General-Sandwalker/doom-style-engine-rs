@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wolf3D-RS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0d0d0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      color: #ccc;
+    }
+    h1 { color: #c8974f; margin-bottom: 0.5rem; letter-spacing: 0.1em; }
+    p  { color: #555; font-size: 0.85rem; margin-bottom: 1rem; }
+    canvas {
+      display: block;
+      width: 640px;
+      height: 480px;
+      border: 1px solid #2a2a34;
+      cursor: none;
+    }
+    #hint {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: #444;
+    }
+    #hint kbd {
+      background: #1c1c22;
+      border: 1px solid #333;
+      border-radius: 3px;
+      padding: 0.1em 0.4em;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Wolf3D-RS</h1>
+  <p>Raycaster · Rust + wgpu · WebAssembly</p>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="hint">
+    <kbd>W</kbd><kbd>S</kbd> move &nbsp;
+    <kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> turn &nbsp;
+    <kbd>Esc</kbd> quit
+  </div>
+
+  <script type="module">
+    // wasm-pack generates wolf3d_rs.js next to this index.html
+    import init from './wolf3d_rs.js';
+    init().catch(console.error);
+  </script>
+</body>
+</html>

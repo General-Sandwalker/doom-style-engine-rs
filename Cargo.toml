@@ -1,0 +1,30 @@
+[package]
+name = "wolf3d_rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wgpu = "22"
+winit = { version = "0.30", features = ["rwh_06"] }
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.3"
+env_logger = "0.11"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Document", "Window", "HtmlCanvasElement"] }
+console_log = "1"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = 3
+
+[profile.release.package."*"]
+opt-level = 3

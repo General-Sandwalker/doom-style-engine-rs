@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wolf3D-RS Tutorial — Build a Raycaster in Rust + wgpu</title>
+  <script>
+    // KaTeX auto-render
+    window.addEventListener("DOMContentLoaded", () => {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+        ],
+      });
+    });
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --surface: #141418;
+      --surface2: #1c1c22;
+      --border: #2a2a34;
+      --accent: #c8974f;
+      --accent2: #7ec8a0;
+      --text: #ddd8cc;
+      --muted: #7a7870;
+      --code-bg: #111115;
+      --code-border: #2c2c38;
+      --keyword: #c792ea;
+      --string: #c3e88d;
+      --num: #f78c6c;
+      --comment: #546e7a;
+      --fn-color: #82aaff;
+      --type-color: #ffcb6b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 16px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: 260px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 2rem 0;
+    }
+    nav .logo {
+      padding: 0 1.5rem 1.5rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+    nav .logo span { color: var(--text); font-weight: 400; }
+    nav ul { list-style: none; }
+    nav ul li a {
+      display: block;
+      padding: 0.35rem 1.5rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: color 0.15s, background 0.15s;
+      border-left: 3px solid transparent;
+    }
+    nav ul li a:hover,
+    nav ul li a.active {
+      color: var(--accent);
+      background: rgba(200,151,79,.07);
+      border-left-color: var(--accent);
+    }
+    nav ul li.section-label {
+      padding: 1rem 1.5rem 0.3rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    main {
+      flex: 1;
+      max-width: 860px;
+      padding: 3rem 3rem 6rem;
+      margin: 0 auto;
+    }
+
+    /* ── Typography ──────────────────────────────────────────── */
+    h1 { font-size: 2.2rem; color: var(--accent); margin-bottom: 0.4rem; line-height: 1.2; }
+    .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2.5rem; }
+
+    h2 {
+      font-size: 1.45rem;
+      color: var(--accent2);
+      margin: 3rem 0 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    h3 { font-size: 1.1rem; color: var(--text); margin: 2rem 0 0.6rem; }
+
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+    li { margin-bottom: 0.25rem; }
+
+    strong { color: #fff; }
+    em { color: var(--accent2); font-style: normal; }
+
+    /* ── Code ────────────────────────────────────────────────── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 6px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1.2rem 0;
+      font-size: 0.87rem;
+      line-height: 1.6;
+    }
+    code { font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace; }
+    p code, li code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.1em 0.4em;
+      font-size: 0.85em;
+      color: var(--accent2);
+    }
+
+    /* syntax highlight classes */
+    .kw  { color: var(--keyword); }
+    .str { color: var(--string); }
+    .num { color: var(--num); }
+    .cmt { color: var(--comment); font-style: italic; }
+    .fn  { color: var(--fn-color); }
+    .ty  { color: var(--type-color); }
+    .mac { color: #f07178; }
+
+    /* ── Callouts ────────────────────────────────────────────── */
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: rgba(200,151,79,.07);
+      padding: 0.9rem 1.2rem;
+      border-radius: 0 6px 6px 0;
+      margin: 1.2rem 0;
+    }
+    .callout.info { border-color: var(--accent2); background: rgba(126,200,160,.06); }
+    .callout .callout-title { font-weight: 700; color: var(--accent); margin-bottom: 0.3rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .callout.info .callout-title { color: var(--accent2); }
+
+    /* ── Math ────────────────────────────────────────────────── */
+    .katex-display { margin: 1.2rem 0; overflow-x: auto; }
+
+    /* ── File tree ───────────────────────────────────────────── */
+    .tree {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 6px;
+      padding: 1.2rem 1.5rem;
+      font-family: monospace;
+      font-size: 0.87rem;
+      line-height: 1.9;
+    }
+    .tree .dir  { color: var(--accent); }
+    .tree .file { color: var(--text); }
+    .tree .note { color: var(--muted); }
+
+    /* ── Step badges ─────────────────────────────────────────── */
+    .step-badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #111;
+      font-weight: 700;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      padding: 0.1em 0.55em;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+
+    /* ── Table ───────────────────────────────────────────────── */
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+    th { background: var(--surface2); color: var(--accent); text-align: left; padding: 0.55rem 0.9rem; border-bottom: 2px solid var(--border); }
+    td { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ── Diagram ─────────────────────────────────────────────── */
+    .diagram {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 6px;
+      padding: 1.4rem;
+      margin: 1.2rem 0;
+      text-align: center;
+    }
+    svg text { font-family: monospace; }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<nav>
+  <div class="logo">Wolf3D-RS<br><span>Build a raycaster</span></div>
+  <ul>
+    <li class="section-label">Introduction</li>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#prerequisites">Prerequisites</a></li>
+    <li><a href="#project-setup">Project Setup</a></li>
+
+    <li class="section-label">Core Concepts</li>
+    <li><a href="#grid-world">The Grid World</a></li>
+    <li><a href="#map-files">Map Text Files</a></li>
+    <li><a href="#map-parser">Map Parser</a></li>
+
+    <li class="section-label">Math &amp; Rendering</li>
+    <li><a href="#player-math">Player & Direction</a></li>
+    <li><a href="#fov-rays">FOV &amp; Rays</a></li>
+    <li><a href="#dda">DDA Algorithm</a></li>
+    <li><a href="#perp-dist">Perpendicular Distance</a></li>
+    <li><a href="#column-height">Column Height</a></li>
+    <li><a href="#shading">Shading</a></li>
+    <li><a href="#minimap">Minimap</a></li>
+
+    <li class="section-label">Engine</li>
+    <li><a href="#wgpu-pipeline">wgpu Pipeline</a></li>
+    <li><a href="#wgsl-shader">WGSL Shader</a></li>
+    <li><a href="#vertex-gen">Vertex Generation</a></li>
+    <li><a href="#player-movement">Player Movement</a></li>
+    <li><a href="#main-loop">Main Loop</a></li>
+
+    <li class="section-label">Running It</li>
+    <li><a href="#running">Build &amp; Run</a></li>
+    <li><a href="#extending">Extending</a></li>
+  </ul>
+</nav>
+
+<!-- ══════════ MAIN CONTENT ══════════ -->
+<main>
+
+  <h1>Build a Wolfenstein-3D Engine</h1>
+  <p class="subtitle">Rust · wgpu · Raycasting · DDA · From scratch</p>
+
+  <!-- ─── OVERVIEW ─────────────────────────────────────────── -->
+  <section id="overview">
+    <h2>Overview</h2>
+    <p>
+      This tutorial walks you through building a <strong>Wolfenstein-3D style first-person raycaster</strong>
+      in <strong>Rust</strong> using <strong>wgpu</strong> for GPU-accelerated rendering. The engine features:
+    </p>
+    <ul>
+      <li>Text-file based maps (walls, enemies, player spawn — all separate grid files)</li>
+      <li>DDA raycasting to project a 3D view without any 3D geometry</li>
+      <li>A live 2D minimap overlay</li>
+      <li>Keyboard-driven player movement with wall collision</li>
+      <li>A minimal WGSL flat-color shader pipeline</li>
+    </ul>
+
+    <div class="diagram">
+      <svg width="600" height="200" viewBox="0 0 600 200">
+        <!-- map grid -->
+        <g fill="none">
+          <rect x="30" y="30" width="140" height="140" fill="#1c1c22" stroke="#2a2a34"/>
+          <!-- wall cells -->
+          <rect x="30"  y="30"  width="20" height="20" fill="#555"/>
+          <rect x="50"  y="30"  width="20" height="20" fill="#555"/>
+          <rect x="70"  y="30"  width="20" height="20" fill="#555"/>
+          <rect x="90"  y="30"  width="20" height="20" fill="#555"/>
+          <rect x="110" y="30"  width="20" height="20" fill="#555"/>
+          <rect x="130" y="30"  width="20" height="20" fill="#555"/>
+          <rect x="150" y="30"  width="20" height="20" fill="#555"/>
+          <rect x="30"  y="50"  width="20" height="20" fill="#555"/>
+          <rect x="30"  y="70"  width="20" height="20" fill="#555"/>
+          <rect x="30"  y="90"  width="20" height="20" fill="#555"/>
+          <rect x="30"  y="110" width="20" height="20" fill="#555"/>
+          <rect x="30"  y="130" width="20" height="20" fill="#555"/>
+          <rect x="30"  y="150" width="20" height="20" fill="#555"/>
+          <rect x="150" y="50"  width="20" height="20" fill="#555"/>
+          <rect x="150" y="70"  width="20" height="20" fill="#555"/>
+          <rect x="150" y="90"  width="20" height="20" fill="#555"/>
+          <rect x="150" y="110" width="20" height="20" fill="#555"/>
+          <rect x="150" y="130" width="20" height="20" fill="#555"/>
+          <rect x="150" y="150" width="20" height="20" fill="#555"/>
+          <rect x="50"  y="150" width="20" height="20" fill="#555"/>
+          <rect x="70"  y="150" width="20" height="20" fill="#555"/>
+          <rect x="90"  y="150" width="20" height="20" fill="#555"/>
+          <rect x="110" y="150" width="20" height="20" fill="#555"/>
+          <rect x="130" y="150" width="20" height="20" fill="#555"/>
+          <!-- inner wall -->
+          <rect x="90"  y="70"  width="20" height="20" fill="#7a5"/>
+          <rect x="110" y="70"  width="20" height="20" fill="#7a5"/>
+          <rect x="90"  y="90"  width="20" height="20" fill="#7a5"/>
+        </g>
+        <!-- player dot -->
+        <circle cx="65" cy="65" r="5" fill="#e55"/>
+        <!-- rays -->
+        <line x1="65" y1="65" x2="91" y2="71"  stroke="#c8974f" stroke-width="1" opacity="0.5"/>
+        <line x1="65" y1="65" x2="90" y2="66"  stroke="#c8974f" stroke-width="1" opacity="0.6"/>
+        <line x1="65" y1="65" x2="90" y2="61"  stroke="#c8974f" stroke-width="1" opacity="0.5"/>
+        <line x1="65" y1="65" x2="90" y2="56"  stroke="#c8974f" stroke-width="1" opacity="0.4"/>
+        <line x1="65" y1="65" x2="91" y2="79"  stroke="#c8974f" stroke-width="1" opacity="0.4"/>
+
+        <text x="100" y="20" fill="#7a7870" font-size="11">2D map (top view)</text>
+        <text x="62"  y="60" fill="#fff"    font-size="10">P</text>
+
+        <!-- arrow -->
+        <text x="210" y="105" fill="#c8974f" font-size="28">→</text>
+
+        <!-- 3D view sketch -->
+        <rect x="260" y="30" width="300" height="140" fill="#111" stroke="#2a2a34"/>
+        <!-- ceiling -->
+        <rect x="260" y="30" width="300" height="70" fill="#232332"/>
+        <!-- floor -->
+        <rect x="260" y="100" width="300" height="70" fill="#2a2218"/>
+        <!-- wall columns -->
+        <rect x="262" y="55"  width="14" height="90" fill="#999"/>
+        <rect x="278" y="48"  width="14" height="104" fill="#aaa"/>
+        <rect x="294" y="44"  width="14" height="112" fill="#bbb"/>
+        <rect x="310" y="42"  width="14" height="116" fill="#ccc"/>
+        <rect x="326" y="44"  width="14" height="112" fill="#bbb"/>
+        <rect x="342" y="48"  width="14" height="104" fill="#aaa"/>
+        <rect x="358" y="55"  width="14" height="90"  fill="#999"/>
+        <rect x="374" y="64"  width="14" height="72"  fill="#888"/>
+        <rect x="390" y="74"  width="14" height="52"  fill="#777"/>
+        <rect x="406" y="82"  width="14" height="36"  fill="#666"/>
+        <rect x="422" y="88"  width="14" height="24"  fill="#555"/>
+        <rect x="438" y="92"  width="14" height="16"  fill="#4a4"/>
+        <rect x="452" y="94"  width="14" height="12"  fill="#4a4"/>
+        <rect x="466" y="95"  width="14" height="10"  fill="#4a4"/>
+        <rect x="480" y="95"  width="14" height="10"  fill="#4a4"/>
+        <rect x="494" y="96"  width="14" height="8"   fill="#4a4"/>
+        <rect x="508" y="96"  width="14" height="8"   fill="#4a4"/>
+        <rect x="522" y="96"  width="12" height="8"   fill="#4a4"/>
+        <text x="372" y="180" fill="#7a7870" font-size="11">3D raycasted view</text>
+      </svg>
+    </div>
+
+    <p>
+      The key insight: we never build 3D geometry. We fire one ray <em>per screen column</em>,
+      find the distance to the nearest wall, and use that to compute how tall to draw a vertical stripe.
+      The whole 3D effect is an illusion built from 2D math.
+    </p>
+  </section>
+
+  <!-- ─── PREREQUISITES ────────────────────────────────────── -->
+  <section id="prerequisites">
+    <h2>Prerequisites</h2>
+    <ul>
+      <li><strong>Rust</strong> (stable, 2021 edition) — <a href="https://rustup.rs">rustup.rs</a></li>
+      <li>Basic familiarity with Rust syntax (structs, enums, traits, ownership)</li>
+      <li>A GPU that supports Vulkan, Metal, or DX12 (wgpu will fall back to OpenGL)</li>
+      <li>High-school trigonometry: <code>sin</code>, <code>cos</code>, angles in radians</li>
+    </ul>
+    <div class="callout info">
+      <div class="callout-title">Note</div>
+      You do <strong>not</strong> need to know OpenGL, Vulkan, or any prior graphics API.
+      wgpu abstracts them all. We only need a vertex buffer and one shader.
+    </div>
+  </section>
+
+  <!-- ─── PROJECT SETUP ────────────────────────────────────── -->
+  <section id="project-setup">
+    <h2>Project Setup</h2>
+
+    <h3><span class="step-badge">1</span> Create the project</h3>
+    <pre><code>cargo new wolf3d_rs --bin
+cd wolf3d_rs</code></pre>
+
+    <h3><span class="step-badge">2</span> Cargo.toml dependencies</h3>
+    <pre><code><span class="cmt"># Cargo.toml</span>
+[dependencies]
+wgpu     = <span class="str">"22"</span>
+winit    = { version = <span class="str">"0.30"</span>, features = [<span class="str">"rwh_06"</span>] }
+bytemuck = { version = <span class="str">"1"</span>,    features = [<span class="str">"derive"</span>] }
+pollster = <span class="str">"0.3"</span>
+env_logger = <span class="str">"0.11"</span>
+log      = <span class="str">"0.4"</span></code></pre>
+
+    <table>
+      <tr><th>Crate</th><th>Purpose</th></tr>
+      <tr><td><code>wgpu</code></td><td>Cross-platform GPU API (Vulkan / Metal / DX12 / WebGPU)</td></tr>
+      <tr><td><code>winit</code></td><td>Window creation and event loop</td></tr>
+      <tr><td><code>bytemuck</code></td><td>Safe casting of Rust structs to raw bytes for GPU buffers</td></tr>
+      <tr><td><code>pollster</code></td><td>Tiny async executor to block on <code>async</code> wgpu calls</td></tr>
+    </table>
+
+    <h3><span class="step-badge">3</span> File structure</h3>
+    <div class="tree">
+      <span class="dir">wolf3d_rs/</span><br>
+      ├── <span class="dir">maps/</span><br>
+      │   ├── <span class="file">map1_walls.txt</span>   <span class="note"># 16×16 wall grid</span><br>
+      │   ├── <span class="file">map1_enemies.txt</span> <span class="note"># 16×16 enemy grid</span><br>
+      │   └── <span class="file">map1_spawn.txt</span>   <span class="note"># player spawn position</span><br>
+      ├── <span class="dir">src/</span><br>
+      │   ├── <span class="file">main.rs</span>          <span class="note"># event loop</span><br>
+      │   ├── <span class="file">map.rs</span>           <span class="note"># text-file parser</span><br>
+      │   ├── <span class="file">player.rs</span>        <span class="note"># movement</span><br>
+      │   ├── <span class="file">raycaster.rs</span>     <span class="note"># DDA + column math</span><br>
+      │   ├── <span class="file">renderer.rs</span>      <span class="note"># wgpu pipeline</span><br>
+      │   └── <span class="dir">shaders/</span><br>
+      │       └── <span class="file">flat.wgsl</span>    <span class="note"># WGSL color shader</span><br>
+      └── <span class="dir">docs/</span>
+    </div>
+  </section>
+
+  <!-- ─── THE GRID WORLD ───────────────────────────────────── -->
+  <section id="grid-world">
+    <h2>The Grid World</h2>
+    <p>
+      The entire game world is a 2D array of <em>cells</em>. Each cell is either empty or occupied
+      by a wall/door. Think of it as a spreadsheet where each cell is 1×1 unit in world-space.
+    </p>
+    <p>
+      The player's position is a continuous floating-point coordinate $(p_x,\ p_y)$.
+      The cell they occupy is simply $(\lfloor p_x \rfloor,\ \lfloor p_y \rfloor)$.
+    </p>
+    <pre><code><span class="cmt">// map.rs — the cell enum</span>
+<span class="kw">pub enum</span> <span class="ty">Cell</span> {
+    <span class="ty">Empty</span>,
+    <span class="ty">Wall</span>(<span class="ty">u8</span>),   <span class="cmt">// 1 = stone, 2 = brick, 3 = metal</span>
+    <span class="ty">Door</span>,
+}</code></pre>
+    <p>
+      We keep the map width and height as constants. All three text files must share the same
+      dimensions:
+    </p>
+    <pre><code><span class="kw">pub const</span> <span class="ty">MAP_WIDTH</span>:  <span class="ty">usize</span> = <span class="num">16</span>;
+<span class="kw">pub const</span> <span class="ty">MAP_HEIGHT</span>: <span class="ty">usize</span> = <span class="num">16</span>;</code></pre>
+  </section>
+
+  <!-- ─── MAP TEXT FILES ───────────────────────────────────── -->
+  <section id="map-files">
+    <h2>Map Text Files</h2>
+    <p>
+      Each layer of the level lives in its own plain-text file. Lines starting with <code>#</code>
+      are comments. Each row is a space-separated list of tokens.
+    </p>
+
+    <h3>maps/map1_walls.txt</h3>
+    <pre><code><span class="cmt"># 0=empty  1=stone  2=brick  3=metal  4=door</span>
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1
+1 0 0 2 2 2 0 0 0 3 3 0 0 0 0 1
+1 0 0 2 0 0 0 0 0 3 0 0 0 0 0 1
+<span class="cmt">... (16 rows total)</span></code></pre>
+
+    <h3>maps/map1_enemies.txt</h3>
+    <pre><code><span class="cmt"># 0=none  1=guard  2=SS  3=officer</span>
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0
+<span class="cmt">...</span></code></pre>
+
+    <h3>maps/map1_spawn.txt</h3>
+    <pre><code><span class="cmt"># P = player start cell</span>
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 P 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+<span class="cmt">...</span></code></pre>
+
+    <p>
+      The player is placed at the <em>center</em> of their spawn cell:
+      $(col + 0.5,\ row + 0.5)$.
+    </p>
+  </section>
+
+  <!-- ─── MAP PARSER ───────────────────────────────────────── -->
+  <section id="map-parser">
+    <h2>Map Parser (<code>map.rs</code>)</h2>
+    <p>
+      The parser reads a text file line by line, skipping comment lines, then splits each row
+      on whitespace and converts tokens to <code>Cell</code> enum values.
+    </p>
+    <pre><code><span class="kw">fn</span> <span class="fn">parse_walls</span>(path: &<span class="ty">str</span>) -> [[<span class="ty">Cell</span>; <span class="ty">MAP_WIDTH</span>]; <span class="ty">MAP_HEIGHT</span>] {
+    <span class="kw">let mut</span> grid = [[<span class="ty">Cell</span>::<span class="ty">Empty</span>; <span class="ty">MAP_WIDTH</span>]; <span class="ty">MAP_HEIGHT</span>];
+    <span class="kw">let</span> content = <span class="ty">fs</span>::<span class="fn">read_to_string</span>(path).<span class="fn">expect</span>(<span class="str">"Failed to read wall map"</span>);
+    <span class="kw">let mut</span> row = <span class="num">0</span>;
+    <span class="kw">for</span> line <span class="kw">in</span> content.<span class="fn">lines</span>() {
+        <span class="kw">if</span> line.<span class="fn">starts_with</span>(<span class="str">'#'</span>) || line.<span class="fn">trim</span>().<span class="fn">is_empty</span>() { <span class="kw">continue</span>; }
+        <span class="kw">for</span> (col, token) <span class="kw">in</span> line.<span class="fn">split_whitespace</span>().<span class="fn">enumerate</span>() {
+            grid[row][col] = <span class="kw">match</span> token {
+                <span class="str">"0"</span> => <span class="ty">Cell</span>::<span class="ty">Empty</span>,
+                <span class="str">"4"</span> => <span class="ty">Cell</span>::<span class="ty">Door</span>,
+                v   => <span class="ty">Cell</span>::<span class="ty">Wall</span>(v.<span class="fn">parse</span>::<<span class="ty">u8</span>>().<span class="fn">unwrap_or</span>(<span class="num">1</span>)),
+            };
+        }
+        row += <span class="num">1</span>;
+    }
+    grid
+}</code></pre>
+
+    <p>
+      <code>Map::load()</code> calls <code>parse_walls</code>, then a similar function for enemies, and
+      a spawn-finder that scans for the <code>"P"</code> token.
+    </p>
+
+    <div class="callout">
+      <div class="callout-title">Design tip</div>
+      Keeping layers in separate files means you can redesign the wall layout without touching
+      the enemy placements, and vice versa. The engine loads all three at startup.
+    </div>
+  </section>
+
+  <!-- ─── PLAYER MATH ──────────────────────────────────────── -->
+  <section id="player-math">
+    <h2>Player &amp; Direction (<code>player.rs</code>)</h2>
+    <p>
+      The player has three numbers: position $(p_x, p_y)$ and facing angle $\theta$ (radians).
+      The unit forward vector is:
+    </p>
+    $$\vec{d} = (\cos\theta,\ \sin\theta)$$
+    <p>
+      Turning adjusts $\theta$ by a rotation speed $\omega$:
+    </p>
+    $$\theta \leftarrow \theta \pm \omega$$
+    <p>
+      Moving forward (W key) translates position along $\vec{d}$:
+    </p>
+    $$p_x \leftarrow p_x + v\cos\theta, \quad p_y \leftarrow p_y + v\sin\theta$$
+
+    <pre><code><span class="kw">pub const</span> <span class="ty">MOVE_SPEED</span>: <span class="ty">f32</span> = <span class="num">0.05</span>;
+<span class="kw">pub const</span> <span class="ty">ROT_SPEED</span>:  <span class="ty">f32</span> = <span class="num">0.04</span>;
+
+<span class="kw">fn</span> <span class="fn">update</span>(&<span class="kw">mut self</span>, keys: &<span class="ty">HashSet</span><<span class="ty">KeyCode</span>>, map: &<span class="ty">Map</span>) {
+    <span class="kw">let</span> dx = <span class="kw">self</span>.angle.<span class="fn">cos</span>();
+    <span class="kw">let</span> dy = <span class="kw">self</span>.angle.<span class="fn">sin</span>();
+    <span class="kw">if</span> keys.<span class="fn">contains</span>(&<span class="ty">KeyCode</span>::<span class="ty">KeyW</span>) {
+        <span class="kw">self</span>.<span class="fn">try_move</span>(dx * <span class="ty">MOVE_SPEED</span>, dy * <span class="ty">MOVE_SPEED</span>, map);
+    }
+    <span class="kw">if</span> keys.<span class="fn">contains</span>(&<span class="ty">KeyCode</span>::<span class="ty">ArrowLeft</span>) { <span class="kw">self</span>.angle -= <span class="ty">ROT_SPEED</span>; }
+    <span class="kw">if</span> keys.<span class="fn">contains</span>(&<span class="ty">KeyCode</span>::<span class="ty">ArrowRight</span>) { <span class="kw">self</span>.angle += <span class="ty">ROT_SPEED</span>; }
+}</code></pre>
+
+    <h3>Collision detection</h3>
+    <p>
+      Before applying movement, we check the destination cell separately for each axis.
+      This allows the player to <em>slide along walls</em> rather than getting stuck:
+    </p>
+    <pre><code><span class="kw">fn</span> <span class="fn">try_move</span>(&<span class="kw">mut self</span>, dx: <span class="ty">f32</span>, dy: <span class="ty">f32</span>, map: &<span class="ty">Map</span>) {
+    <span class="kw">let</span> nx = <span class="kw">self</span>.x + dx;
+    <span class="kw">let</span> ny = <span class="kw">self</span>.y + dy;
+    <span class="kw">if</span> !map.<span class="fn">is_solid</span>(nx <span class="kw">as</span> <span class="ty">i32</span>, <span class="kw">self</span>.y <span class="kw">as</span> <span class="ty">i32</span>) { <span class="kw">self</span>.x = nx; }
+    <span class="kw">if</span> !map.<span class="fn">is_solid</span>(<span class="kw">self</span>.x <span class="kw">as</span> <span class="ty">i32</span>, ny <span class="kw">as</span> <span class="ty">i32</span>) { <span class="kw">self</span>.y = ny; }
+}</code></pre>
+  </section>
+
+  <!-- ─── FOV & RAYS ───────────────────────────────────────── -->
+  <section id="fov-rays">
+    <h2>Field of View &amp; Ray Angles (<code>raycaster.rs</code>)</h2>
+    <p>
+      We simulate a camera with a 60° horizontal field of view ($\pi/3$ radians). The screen
+      is <code>SCREEN_W</code> columns wide, so we cast one ray per column.
+    </p>
+    <p>
+      For screen column $i$ (0-indexed, left to right), the ray's world-space angle is:
+    </p>
+    $$\theta_i = \theta - \frac{\text{FOV}}{2} + \frac{i}{W} \cdot \text{FOV}$$
+    <p>
+      Column 0 → leftmost edge of view. Column $W-1$ → rightmost edge.
+      Column $W/2$ → straight ahead (ray angle = player angle $\theta$).
+    </p>
+    <pre><code><span class="kw">pub const</span> <span class="ty">FOV</span>:      <span class="ty">f32</span> = std::f32::consts::<span class="ty">PI</span> / <span class="num">3.0</span>; <span class="cmt">// 60°</span>
+<span class="kw">pub const</span> <span class="ty">HALF_FOV</span>: <span class="ty">f32</span> = <span class="ty">FOV</span> / <span class="num">2.0</span>;
+
+<span class="kw">for</span> i <span class="kw">in</span> <span class="num">0</span>..<span class="ty">NUM_RAYS</span> {
+    <span class="kw">let</span> ray_angle = angle - <span class="ty">HALF_FOV</span> + (i <span class="kw">as</span> <span class="ty">f32</span> / <span class="ty">NUM_RAYS</span> <span class="kw">as</span> <span class="ty">f32</span>) * <span class="ty">FOV</span>;
+    <span class="kw">let</span> hit = <span class="fn">dda</span>(px, py, ray_angle, map);
+    hits.<span class="fn">push</span>(hit);
+}</code></pre>
+  </section>
+
+  <!-- ─── DDA ─────────────────────────────────────────────── -->
+  <section id="dda">
+    <h2>DDA — Digital Differential Analyzer</h2>
+    <p>
+      DDA is an efficient grid-traversal algorithm. Given a ray starting at $(p_x, p_y)$
+      with direction $(d_x, d_y) = (\cos\theta_i, \sin\theta_i)$, we want to find which cell
+      it hits first.
+    </p>
+
+    <h3>Step deltas</h3>
+    <p>
+      How far must the ray travel (in world units) to cross one full grid unit in X? And in Y?
+    </p>
+    $$\delta_x = \left|\frac{1}{d_x}\right|, \quad \delta_y = \left|\frac{1}{d_y}\right|$$
+
+    <div class="callout info">
+      <div class="callout-title">Why the reciprocal?</div>
+      If $d_x = 0.5$, the ray moves half a unit in X per unit of "time".
+      To move <em>one full unit</em> in X takes $1 / 0.5 = 2$ units of travel. That's $\delta_x$.
+    </div>
+
+    <h3>Initial side distances</h3>
+    <p>
+      Before entering the main loop we compute how far the ray needs to travel to hit the
+      <em>very first</em> vertical grid line (for $s_x$) and the first horizontal grid line (for $s_y$):
+    </p>
+    $$
+    s_x = \begin{cases}
+      (p_x - \lfloor p_x \rfloor)\,\delta_x & \text{if } d_x < 0 \\
+      (\lfloor p_x \rfloor + 1 - p_x)\,\delta_x & \text{if } d_x \geq 0
+    \end{cases}
+    $$
+
+    <h3>The stepping loop</h3>
+    <p>
+      Each iteration, we advance the ray to the <em>nearest</em> grid boundary (whichever of
+      $s_x$ or $s_y$ is smaller), move one cell in that direction, and check if it's solid:
+    </p>
+    <pre><code><span class="kw">loop</span> {
+    <span class="kw">if</span> side_dist_x < side_dist_y {
+        side_dist_x += delta_dist_x;
+        map_x += step_x;       <span class="cmt">// step ±1 in X</span>
+        side = <span class="ty">Side</span>::<span class="ty">Vertical</span>;
+    } <span class="kw">else</span> {
+        side_dist_y += delta_dist_y;
+        map_y += step_y;
+        side = <span class="ty">Side</span>::<span class="ty">Horizontal</span>;
+    }
+    cell = map.<span class="fn">cell_at</span>(map_x, map_y);
+    <span class="kw">if</span> cell != <span class="ty">Cell</span>::<span class="ty">Empty</span> { <span class="kw">break</span>; }
+}</code></pre>
+    <p>
+      "Vertical" side means the ray crossed a vertical grid line (north/south face of a cell).
+      "Horizontal" means it crossed a horizontal grid line (east/west face).
+    </p>
+
+    <div class="diagram">
+      <svg width="340" height="240" viewBox="0 0 340 240">
+        <defs>
+          <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#c8974f"/>
+          </marker>
+        </defs>
+        <!-- grid -->
+        <g stroke="#2a2a34" fill="none">
+          <line x1="40"  y1="20"  x2="40"  y2="220"/>
+          <line x1="100" y1="20"  x2="100" y2="220"/>
+          <line x1="160" y1="20"  x2="160" y2="220"/>
+          <line x1="220" y1="20"  x2="220" y2="220"/>
+          <line x1="280" y1="20"  x2="280" y2="220"/>
+          <line x1="20"  y1="40"  x2="320" y2="40"/>
+          <line x1="20"  y1="100" x2="320" y2="100"/>
+          <line x1="20"  y1="160" x2="320" y2="160"/>
+          <line x1="20"  y1="220" x2="320" y2="220"/>
+        </g>
+        <!-- wall cell -->
+        <rect x="220" y="40" width="60" height="60" fill="#556" stroke="#aab" stroke-width="2"/>
+        <text x="236" y="78" fill="#ddd" font-size="12">wall</text>
+        <!-- player -->
+        <circle cx="70" cy="175" r="6" fill="#e55"/>
+        <text x="78" y="172" fill="#e55" font-size="11">P</text>
+        <!-- ray -->
+        <line x1="70" y1="175" x2="222" y2="58" stroke="#c8974f" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- vertical crossing markers -->
+        <circle cx="100" cy="154" r="4" fill="none" stroke="#7ec8a0" stroke-width="1.5"/>
+        <circle cx="160" cy="133" r="4" fill="none" stroke="#7ec8a0" stroke-width="1.5"/>
+        <circle cx="220" cy="112" r="4" fill="none" stroke="#7ec8a0" stroke-width="1.5"/>
+        <!-- horizontal crossing -->
+        <circle cx="109" cy="160" r="4" fill="none" stroke="#f07178" stroke-width="1.5"/>
+        <circle cx="148" cy="100" r="4" fill="none" stroke="#f07178" stroke-width="1.5"/>
+        <!-- labels -->
+        <text x="95"  y="145" fill="#7ec8a0" font-size="10">sx</text>
+        <text x="215" y="105" fill="#7ec8a0" font-size="10">hit!</text>
+        <text x="104" y="178" fill="#f07178" font-size="10">sy</text>
+        <text x="8"   y="230" fill="#7a7870" font-size="10">green = vertical crossings, red = horizontal</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ─── PERPENDICULAR DISTANCE ───────────────────────────── -->
+  <section id="perp-dist">
+    <h2>Perpendicular Distance — Killing Fish-Eye</h2>
+    <p>
+      If we use the raw Euclidean distance from the player to the wall hit point, columns at
+      the edges of the screen (where rays are angled away from center) will report a longer
+      distance than the center column. This makes straight walls appear curved — the fish-eye
+      effect.
+    </p>
+    <p>
+      The fix: project the ray distance onto the <strong>camera plane</strong> (a line perpendicular
+      to the player's forward direction). This is simply the accumulated side-distance
+      <em>minus</em> the last step delta:
+    </p>
+    $$
+    d_\perp = \begin{cases}
+      s_x - \delta_x & \text{(vertical wall hit)} \\
+      s_y - \delta_y & \text{(horizontal wall hit)}
+    \end{cases}
+    $$
+    <pre><code><span class="kw">let</span> perp_wall_dist = <span class="kw">match</span> side {
+    <span class="ty">Side</span>::<span class="ty">Vertical</span>   => side_dist_x - delta_dist_x,
+    <span class="ty">Side</span>::<span class="ty">Horizontal</span> => side_dist_y - delta_dist_y,
+};</code></pre>
+    <div class="callout info">
+      <div class="callout-title">Why subtract the last delta?</div>
+      After the DDA loop finishes, <code>side_dist_x</code> has already been incremented one extra
+      time (the step that landed <em>inside</em> the wall). Subtracting $\delta_x$ gives us the
+      distance to the wall's <em>near face</em>.
+    </div>
+  </section>
+
+  <!-- ─── COLUMN HEIGHT ────────────────────────────────────── -->
+  <section id="column-height">
+    <h2>Wall Column Height</h2>
+    <p>
+      By similar triangles: if the wall is 1 unit tall in world space and the screen is $H$ pixels
+      tall, the projected pixel height of the wall column at perpendicular distance $d_\perp$ is:
+    </p>
+    $$h = \frac{H}{d_\perp}$$
+    <p>
+      We clamp $h$ to $[0, H]$ so very close walls don't exceed the screen, then draw the stripe
+      centered vertically:
+    </p>
+    $$\text{top} = \frac{H}{2} - \frac{h}{2}, \quad \text{bottom} = \frac{H}{2} + \frac{h}{2}$$
+
+    <pre><code><span class="kw">pub fn</span> <span class="fn">compute_column_height</span>(distance: <span class="ty">f32</span>) -> <span class="ty">u32</span> {
+    (<span class="ty">SCREEN_H</span> <span class="kw">as</span> <span class="ty">f32</span> / distance) <span class="kw">as</span> <span class="ty">u32</span>
+        .<span class="fn">min</span>(<span class="ty">SCREEN_H</span> <span class="kw">as</span> <span class="ty">u32</span>)
+}</code></pre>
+
+    <p>
+      Walls far away produce small $h$ (thin stripe near screen center).
+      Walls up close produce large $h$ (stripe fills the screen).
+      This is the entire 3D illusion.
+    </p>
+  </section>
+
+  <!-- ─── SHADING ──────────────────────────────────────────── -->
+  <section id="shading">
+    <h2>Directional Shading</h2>
+    <p>
+      To make corners visible without any actual lighting math, horizontal-side walls
+      (north/south faces) are rendered at <strong>60% brightness</strong> of their base color,
+      while vertical-side walls (east/west faces) render at full brightness:
+    </p>
+    <pre><code><span class="kw">pub fn</span> <span class="fn">wall_color</span>(cell: &<span class="ty">Cell</span>, side: &<span class="ty">Side</span>) -> [<span class="ty">f32</span>; <span class="num">4</span>] {
+    <span class="kw">let</span> base = <span class="kw">match</span> cell {
+        <span class="ty">Cell</span>::<span class="ty">Wall</span>(<span class="num">1</span>) => [<span class="num">0.6</span>, <span class="num">0.6</span>, <span class="num">0.6</span>, <span class="num">1.0</span>],   <span class="cmt">// stone</span>
+        <span class="ty">Cell</span>::<span class="ty">Wall</span>(<span class="num">2</span>) => [<span class="num">0.7</span>, <span class="num">0.4</span>, <span class="num">0.2</span>, <span class="num">1.0</span>],   <span class="cmt">// brick</span>
+        <span class="ty">Cell</span>::<span class="ty">Wall</span>(<span class="num">3</span>) => [<span class="num">0.4</span>, <span class="num">0.4</span>, <span class="num">0.6</span>, <span class="num">1.0</span>],   <span class="cmt">// metal</span>
+        <span class="ty">Cell</span>::<span class="ty">Door</span>    => [<span class="num">0.6</span>, <span class="num">0.5</span>, <span class="num">0.1</span>, <span class="num">1.0</span>],
+        _              => [<span class="num">0.5</span>, <span class="num">0.5</span>, <span class="num">0.5</span>, <span class="num">1.0</span>],
+    };
+    <span class="kw">if</span> *side == <span class="ty">Side</span>::<span class="ty">Horizontal</span> {
+        [base[<span class="num">0</span>] * <span class="num">0.6</span>, base[<span class="num">1</span>] * <span class="num">0.6</span>, base[<span class="num">2</span>] * <span class="num">0.6</span>, <span class="num">1.0</span>]
+    } <span class="kw">else</span> { base }
+}</code></pre>
+  </section>
+
+  <!-- ─── MINIMAP ──────────────────────────────────────────── -->
+  <section id="minimap">
+    <h2>2D Minimap</h2>
+    <p>
+      The minimap is drawn as a grid of colored rectangles in NDC (Normalized Device Coordinates,
+      where $(-1,-1)$ is bottom-left and $(1,1)$ is top-right on the GPU).
+    </p>
+    <p>
+      To convert a pixel position $(px, py)$ on a screen of size $(W, H)$ to NDC:
+    </p>
+    $$x_{ndc} = \frac{2\,px}{W} - 1, \quad y_{ndc} = 1 - \frac{2\,py}{H}$$
+    <p>
+      Each grid cell is drawn as a <code>scale × scale</code> NDC rectangle offset from the
+      bottom-left corner. The player is a red dot; a short yellow line indicates facing direction.
+    </p>
+    <pre><code><span class="kw">let</span> scale = <span class="num">0.012</span><span class="ty">f32</span>;          <span class="cmt">// size of each cell in NDC</span>
+<span class="kw">let</span> ox = -<span class="num">1.0</span><span class="ty">f32</span>;              <span class="cmt">// anchor bottom-left</span>
+<span class="kw">let</span> oy = -<span class="num">1.0</span><span class="ty">f32</span>;
+
+<span class="kw">for</span> row <span class="kw">in</span> <span class="num">0</span>..<span class="ty">MAP_HEIGHT</span> {
+    <span class="kw">for</span> col <span class="kw">in</span> <span class="num">0</span>..<span class="ty">MAP_WIDTH</span> {
+        <span class="kw">let</span> x0 = ox + col <span class="kw">as</span> <span class="ty">f32</span> * scale;
+        <span class="kw">let</span> y0 = oy + row <span class="kw">as</span> <span class="ty">f32</span> * scale;
+        <span class="fn">push_quad</span>(verts, x0, y0, x0+scale, y0+scale, color);
+    }
+}</code></pre>
+  </section>
+
+  <!-- ─── WGPU PIPELINE ────────────────────────────────────── -->
+  <section id="wgpu-pipeline">
+    <h2>wgpu Render Pipeline (<code>renderer.rs</code>)</h2>
+    <p>
+      wgpu uses an explicit pipeline object that describes every stage of the GPU draw call.
+      Ours is simple: one vertex buffer, one shader module, no depth buffer, no textures.
+    </p>
+
+    <h3>Vertex layout</h3>
+    <p>
+      Each vertex carries a 2D position (already in NDC) and an RGBA color:
+    </p>
+    <pre><code>#[<span class="mac">repr</span>(C)]
+#[<span class="mac">derive</span>(<span class="ty">Copy</span>, <span class="ty">Clone</span>, <span class="ty">Pod</span>, <span class="ty">Zeroable</span>)]
+<span class="kw">pub struct</span> <span class="ty">Vertex</span> {
+    <span class="kw">pub</span> position: [<span class="ty">f32</span>; <span class="num">2</span>],
+    <span class="kw">pub</span> color:    [<span class="ty">f32</span>; <span class="num">4</span>],
+}</code></pre>
+
+    <p>
+      <code>Pod</code> (plain old data) and <code>Zeroable</code> from <code>bytemuck</code> let us
+      safely cast a <code>&[Vertex]</code> to raw bytes with
+      <code>bytemuck::cast_slice(&vertices)</code> for uploading to the GPU.
+    </p>
+
+    <h3>Initialization sequence</h3>
+    <ol>
+      <li>Create <code>wgpu::Instance</code> → query adapters</li>
+      <li>Pick an <code>Adapter</code> (GPU) compatible with the window surface</li>
+      <li>Request a <code>Device</code> + <code>Queue</code> from the adapter</li>
+      <li>Configure the <code>Surface</code> with pixel format, size, present mode</li>
+      <li>Load the WGSL shader source, build a <code>RenderPipeline</code></li>
+    </ol>
+
+    <h3>Per-frame render loop</h3>
+    <pre><code><span class="cmt">// Each frame:</span>
+<span class="kw">let</span> output = surface.<span class="fn">get_current_texture</span>()?;
+<span class="kw">let</span> view = output.texture.<span class="fn">create_view</span>(&<span class="ty">Default</span>::<span class="fn">default</span>());
+
+<span class="cmt">// Build all vertex data (3D columns + minimap quads) on the CPU</span>
+<span class="kw">let mut</span> vertices: <span class="ty">Vec</span><<span class="ty">Vertex</span>> = <span class="ty">Vec</span>::<span class="fn">new</span>();
+<span class="fn">build_3d_view</span>(&<span class="kw">mut</span> vertices, player, map);
+<span class="fn">build_minimap</span>(&<span class="kw">mut</span> vertices, player, map);
+
+<span class="cmt">// Upload to GPU as a one-shot vertex buffer</span>
+<span class="kw">let</span> vbuf = device.<span class="fn">create_buffer_init</span>(&<span class="ty">BufferInitDescriptor</span> {
+    contents: bytemuck::<span class="fn">cast_slice</span>(&vertices),
+    usage: <span class="ty">BufferUsages</span>::<span class="ty">VERTEX</span>,
+    ..
+});
+
+<span class="cmt">// Record and submit a render pass</span>
+<span class="kw">let mut</span> encoder = device.<span class="fn">create_command_encoder</span>(..);
+{
+    <span class="kw">let mut</span> pass = encoder.<span class="fn">begin_render_pass</span>(..);
+    pass.<span class="fn">set_pipeline</span>(&pipeline);
+    pass.<span class="fn">set_vertex_buffer</span>(<span class="num">0</span>, vbuf.<span class="fn">slice</span>(..));
+    pass.<span class="fn">draw</span>(<span class="num">0</span>..vertices.<span class="fn">len</span>() <span class="kw">as</span> <span class="ty">u32</span>, <span class="num">0</span>..<span class="num">1</span>);
+}
+queue.<span class="fn">submit</span>(std::iter::<span class="fn">once</span>(encoder.<span class="fn">finish</span>()));
+output.<span class="fn">present</span>();</code></pre>
+  </section>
+
+  <!-- ─── WGSL SHADER ──────────────────────────────────────── -->
+  <section id="wgsl-shader">
+    <h2>WGSL Shader (<code>flat.wgsl</code>)</h2>
+    <p>
+      WGSL (WebGPU Shading Language) is wgpu's native shader language. Our shader is minimal:
+      the vertex stage passes position and color through; the fragment stage outputs the color.
+    </p>
+    <pre><code><span class="kw">struct</span> <span class="ty">VertexInput</span> {
+    @<span class="fn">location</span>(<span class="num">0</span>) position: <span class="ty">vec2</span><<span class="ty">f32</span>>,
+    @<span class="fn">location</span>(<span class="num">1</span>) color:    <span class="ty">vec4</span><<span class="ty">f32</span>>,
+};
+
+<span class="kw">struct</span> <span class="ty">VertexOutput</span> {
+    @<span class="fn">builtin</span>(position) clip_position: <span class="ty">vec4</span><<span class="ty">f32</span>>,
+    @<span class="fn">location</span>(<span class="num">0</span>)      color:          <span class="ty">vec4</span><<span class="ty">f32</span>>,
+};
+
+@<span class="fn">vertex</span>
+<span class="kw">fn</span> <span class="fn">vs_main</span>(in: <span class="ty">VertexInput</span>) -> <span class="ty">VertexOutput</span> {
+    <span class="kw">var</span> out: <span class="ty">VertexOutput</span>;
+    out.clip_position = <span class="ty">vec4</span><<span class="ty">f32</span>>(in.position, <span class="num">0.0</span>, <span class="num">1.0</span>);
+    out.color = in.color;
+    <span class="kw">return</span> out;
+}
+
+@<span class="fn">fragment</span>
+<span class="kw">fn</span> <span class="fn">fs_main</span>(in: <span class="ty">VertexOutput</span>) -> @<span class="fn">location</span>(<span class="num">0</span>) <span class="ty">vec4</span><<span class="ty">f32</span>> {
+    <span class="kw">return</span> in.color;
+}</code></pre>
+    <p>
+      <code>@builtin(position)</code> tells the GPU this is the clip-space position.
+      Since our vertices are already in NDC, we just promote the <code>vec2</code> to a
+      <code>vec4</code> by setting $z=0$ and $w=1$.
+    </p>
+  </section>
+
+  <!-- ─── VERTEX GENERATION ────────────────────────────────── -->
+  <section id="vertex-gen">
+    <h2>Vertex Generation — CPU Side</h2>
+    <p>
+      Everything visible is built from axis-aligned quads. A quad is two triangles
+      (6 vertices, winding counter-clockwise). We write a helper:
+    </p>
+    <pre><code><span class="kw">fn</span> <span class="fn">push_quad</span>(verts: &<span class="kw">mut</span> <span class="ty">Vec</span><<span class="ty">Vertex</span>>,
+             x0: <span class="ty">f32</span>, y0: <span class="ty">f32</span>, x1: <span class="ty">f32</span>, y1: <span class="ty">f32</span>,
+             color: [<span class="ty">f32</span>; <span class="num">4</span>]) {
+    <span class="kw">let</span> tl = <span class="ty">Vertex</span> { position: [x0, y1], color };
+    <span class="kw">let</span> tr = <span class="ty">Vertex</span> { position: [x1, y1], color };
+    <span class="kw">let</span> bl = <span class="ty">Vertex</span> { position: [x0, y0], color };
+    <span class="kw">let</span> br = <span class="ty">Vertex</span> { position: [x1, y0], color };
+    verts.<span class="fn">extend_from_slice</span>(&[tl, bl, tr, tr, bl, br]);
+}</code></pre>
+
+    <h3>3D view</h3>
+    <ol>
+      <li>Draw a full-screen ceiling quad (top half, dark blue-grey)</li>
+      <li>Draw a full-screen floor quad (bottom half, dark brown)</li>
+      <li>For each ray column $i$: compute column height, convert top/bottom pixels to NDC, push a colored quad</li>
+    </ol>
+
+    <h3>NDC conversion for screen pixels</h3>
+    <pre><code><span class="kw">fn</span> <span class="fn">ndc_x</span>(px: <span class="ty">f32</span>, sw: <span class="ty">f32</span>) -> <span class="ty">f32</span> { (px / sw) * <span class="num">2.0</span> - <span class="num">1.0</span> }
+<span class="kw">fn</span> <span class="fn">ndc_y</span>(py: <span class="ty">f32</span>, sh: <span class="ty">f32</span>) -> <span class="ty">f32</span> { <span class="num">1.0</span> - (py / sh) * <span class="num">2.0</span> }</code></pre>
+  </section>
+
+  <!-- ─── PLAYER MOVEMENT ──────────────────────────────────── -->
+  <section id="player-movement">
+    <h2>Player Movement &amp; Input</h2>
+    <p>
+      winit delivers keyboard events to the <code>window_event</code> handler.
+      We maintain a <code>HashSet&lt;KeyCode&gt;</code> of currently pressed keys and consult it
+      every frame in <code>player.update()</code>:
+    </p>
+
+    <table>
+      <tr><th>Key</th><th>Action</th></tr>
+      <tr><td>W / ↑</td><td>Move forward</td></tr>
+      <tr><td>S / ↓</td><td>Move backward</td></tr>
+      <tr><td>A / ←</td><td>Rotate left ($\theta -= \omega$)</td></tr>
+      <tr><td>D / →</td><td>Rotate right ($\theta += \omega$)</td></tr>
+      <tr><td>Escape</td><td>Quit</td></tr>
+    </table>
+
+    <pre><code><span class="kw">WindowEvent</span>::<span class="ty">KeyboardInput</span> { event: <span class="ty">KeyEvent</span> {
+    physical_key: <span class="ty">PhysicalKey</span>::<span class="ty">Code</span>(key), state, ..
+}, .. } => {
+    <span class="kw">match</span> state {
+        <span class="ty">ElementState</span>::<span class="ty">Pressed</span>  => { <span class="kw">self</span>.keys.<span class="fn">insert</span>(key); }
+        <span class="ty">ElementState</span>::<span class="ty">Released</span> => { <span class="kw">self</span>.keys.<span class="fn">remove</span>(&key); }
+    }
+}</code></pre>
+  </section>
+
+  <!-- ─── MAIN LOOP ────────────────────────────────────────── -->
+  <section id="main-loop">
+    <h2>Main Loop (<code>main.rs</code>)</h2>
+    <p>
+      winit 0.30 uses the <code>ApplicationHandler</code> trait. The key events to handle are:
+    </p>
+    <ul>
+      <li><code>resumed</code> — create the window and initialize the renderer (async, blocked with <code>pollster</code>)</li>
+      <li><code>RedrawRequested</code> — update player, render, request another redraw (drives the game loop)</li>
+      <li><code>Resized</code> — reconfigure the wgpu surface</li>
+      <li><code>CloseRequested</code> / Escape — call <code>event_loop.exit()</code></li>
+    </ul>
+    <pre><code><span class="kw">fn</span> <span class="fn">main</span>() {
+    env_logger::<span class="fn">init</span>();
+    <span class="kw">let</span> event_loop = <span class="ty">EventLoop</span>::<span class="fn">new</span>().<span class="fn">unwrap</span>();
+    <span class="kw">let mut</span> app = <span class="ty">App</span>::<span class="fn">new</span>();
+    event_loop.<span class="fn">run_app</span>(&<span class="kw">mut</span> app).<span class="fn">unwrap</span>();
+}</code></pre>
+    <p>
+      The continuous game loop is driven by requesting a redraw at the end of every
+      <code>RedrawRequested</code> handler: <code>window.request_redraw()</code>.
+    </p>
+  </section>
+
+  <!-- ─── BUILD & RUN ──────────────────────────────────────── -->
+  <section id="running">
+    <h2>Build &amp; Run</h2>
+    <pre><code>cargo run            <span class="cmt"># debug (slow compile, fast iteration)</span>
+cargo run --release  <span class="cmt"># optimized build</span></code></pre>
+
+    <div class="callout info">
+      <div class="callout-title">Make sure to run from the project root</div>
+      The engine reads map files at runtime using relative paths like
+      <code>maps/map1_walls.txt</code>. Your working directory must be the project root when running.
+    </div>
+
+    <p>If wgpu can't find a GPU backend, set:</p>
+    <pre><code>WGPU_BACKEND=vulkan cargo run     <span class="cmt"># or: metal, dx12, gl</span>
+RUST_LOG=wgpu=warn cargo run      <span class="cmt"># quiet wgpu debug spam</span></code></pre>
+  </section>
+
+  <!-- ─── EXTENDING ────────────────────────────────────────── -->
+  <section id="extending">
+    <h2>Extending the Engine</h2>
+
+    <h3>Add a new map</h3>
+    <p>Create three new text files (<code>map2_walls.txt</code>, etc.) and change the paths in
+    <code>App::new()</code>. The grid size is controlled by <code>MAP_WIDTH</code> / <code>MAP_HEIGHT</code>
+    constants — change both and resize your text files.</p>
+
+    <h3>Add textures</h3>
+    <p>
+      Each <code>RayHit</code> already carries a <code>wall_x: f32</code> — the fractional horizontal
+      position of the hit on the wall face (0.0 → left edge, 1.0 → right edge). Use this to
+      sample a texture atlas by passing texture coordinates through to the fragment shader.
+    </p>
+
+    <h3>Add sprites (enemies)</h3>
+    <p>
+      Enemy positions are loaded into <code>Map.enemies</code>. Sort them by distance from player
+      (farthest first), then for each enemy project its world position to screen-space using:
+    </p>
+    $$
+    \text{screen}\_x = \frac{W}{2} + \frac{W}{2\tan(\text{FOV}/2)} \cdot \frac{\Delta_y \cos\theta - \Delta_x \sin\theta}{\Delta_x \cos\theta + \Delta_y \sin\theta}
+    $$
+    <p>
+      where $(\Delta_x, \Delta_y) = (e_x - p_x,\ e_y - p_y)$ is the vector from player to enemy.
+    </p>
+
+    <h3>Animated doors</h3>
+    <p>
+      Track a door's open offset per-cell (0.0 = closed, 1.0 = fully open).
+      In the DDA loop, treat a door as a wall only when its offset is below some threshold.
+      Advance the offset each frame when the player is adjacent and presses a key.
+    </p>
+
+    <h3>Larger maps</h3>
+    <p>Change <code>MAP_WIDTH</code> and <code>MAP_HEIGHT</code> and expand the text files.
+    The parser will handle any size automatically.</p>
+  </section>
+
+  <footer>
+    <p>Wolf3D-RS · Built with Rust &amp; wgpu · Tutorial generated February 2026</p>
+  </footer>
+
+</main>
+</div>
+</body>
+</html>
