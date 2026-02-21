@@ -15,7 +15,7 @@ required-features = ["native"]
 native = []
 
 [dependencies]
-wgpu = "27"
+wgpu = { version = "27", features = ["webgl"] }
 winit = { version = "=0.30.9", features = ["rwh_06"] }
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
