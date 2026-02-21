@@ -6,6 +6,14 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "wolf3d_rs"
+path = "src/main.rs"
+required-features = ["native"]
+
+[features]
+native = []
+
 [dependencies]
 wgpu = "27"
 winit = { version = "=0.30.9", features = ["rwh_06"] }
@@ -16,10 +24,11 @@ log = "0.4"
 pollster = "0.3"
 env_logger = "0.11"
 
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Document", "Window", "HtmlCanvasElement"] }
+wasm-bindgen = "=0.2.100"
+wasm-bindgen-futures = "=0.4.50"
+web-sys = { version = "=0.3.77", features = ["Document", "Window", "HtmlCanvasElement"] }
 console_log = "1"
 console_error_panic_hook = "0.1"
 
