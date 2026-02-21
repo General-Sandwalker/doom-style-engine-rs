@@ -44,8 +44,10 @@ impl Renderer {
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Self {
         let size = window.inner_size();
 
+        // On WASM: try WebGPU first, fall back to WebGL2.
+        // On native: use all available backends.
         #[cfg(target_arch = "wasm32")]
-        let backends = wgpu::Backends::GL;
+        let backends = wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL;
         #[cfg(not(target_arch = "wasm32"))]
         let backends = wgpu::Backends::all();
 
@@ -54,14 +56,35 @@ impl Renderer {
             ..Default::default()
         });
         let surface = instance.create_surface(window).unwrap();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("No suitable GPU adapter found");
+
+        let adapter = {
+            // First try a high-performance adapter compatible with the surface.
+            let preferred = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::default(),
+                    compatible_surface: Some(&surface),
+                    force_fallback_adapter: false,
+                })
+                .await;
+
+            // On WASM, if that fails (e.g. no WebGPU), try the fallback (WebGL2).
+            #[cfg(target_arch = "wasm32")]
+            let adapter = match preferred {
+                Ok(a) => a,
+                Err(_) => instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::default(),
+                        compatible_surface: Some(&surface),
+                        force_fallback_adapter: true,
+                    })
+                    .await
+                    .expect("No WebGL2 or WebGPU adapter found"),
+            };
+            #[cfg(not(target_arch = "wasm32"))]
+            let adapter = preferred.expect("No suitable GPU adapter found");
+
+            adapter
+        };
 
         log::info!("Adapter: {:?}", adapter.get_info());
 
